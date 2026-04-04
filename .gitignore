@@ -1,0 +1,63 @@
+# ── Raw data files ────────────────────────────────────────────────────────────
+data/*.csv
+!data/bin_fill_curve_coefficients.csv
+data/*.xlsx
+data/*.xls
+*.csv
+*.xlsx
+
+# ── Model outputs (regenerate from notebooks) ─────────────────────────────────
+bin_quantile_forecasts.csv
+bin_rolling_forecast.csv
+
+# ── Weather cache ─────────────────────────────────────────────────────────────
+.weather_cache/
+*.cache
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Jupyter ───────────────────────────────────────────────────────────────────
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+*.ipynb_checkpoints
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── LaTeX build artifacts ─────────────────────────────────────────────────────
+report/*.aux
+report/*.log
+report/*.out
+report/*.toc
+report/*.synctex.gz
+report/*.fls
+report/*.fdb_latexmk
+report/*.pdf
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+*.log
+*.pkl
+*.joblib
