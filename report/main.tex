@@ -1,0 +1,779 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{setspace}
+\usepackage{parskip}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{tabularx}
+\usepackage{caption}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{microtype}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\definecolor{reportblue}{RGB}{46,64,87}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=reportblue,
+    urlcolor=reportblue,
+    citecolor=reportblue
+}
+\titleformat{\section}{\large\bfseries\color{reportblue}}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries\color{reportblue}}{}{0em}{}
+\titleformat{\subsubsection}{\normalsize\bfseries}{}{0em}{}
+\titlespacing*{\section}{0pt}{18pt}{8pt}
+\titlespacing*{\subsection}{0pt}{12pt}{4pt}
+\titlespacing*{\subsubsection}{0pt}{10pt}{4pt}
+\pagestyle{plain}
+\fancyhf{}
+\rfoot{\small\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\captionsetup[table]{position=above, labelfont=bf, labelsep=period}
+\captionsetup[figure]{position=below, labelfont=bf, labelsep=period}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{8pt}
+% ── Column types for tables ───────────────────────────────────────────────────
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+
+\setstretch{1.15}
+\setlist[itemize]{noitemsep, topsep=4pt, left=1.5em}
+
+\begin{document}
+\pagenumbering{gobble}
+
+% ── TITLE PAGE ────────────────────────────────────────────────────────────────
+\begin{titlepage}
+  \centering
+  \vspace*{3cm}
+  {\LARGE\bfseries\color{reportblue} Big Belly Smart Bin Forecasting\par}
+  \vspace{0.5cm}
+  {\large Cal Zero Waste - UC Berkeley Facilities Services\par}
+  \vspace{2.5cm}
+  {\normalsize Joy Zhang \quad Jacob Quisumbing \quad Vicky Xiao \quad Zoey Kim\par}
+  \vspace{0.4cm}
+  {\normalsize IND ENG 180 - Industrial Engineering Capstone, Project 10A\par}
+  \vspace{0.4cm}
+  {\normalsize University of California, Berkeley\par}
+  \vspace{0.4cm}
+  {\normalsize March 20, 2026\par}
+  \vspace{0.6cm}
+  {\normalsize\color{gray}\textit{DRAFT - First Half of Final Report}\par}
+\end{titlepage}
+
+\pagenumbering{arabic}
+\setcounter{page}{1}
+
+% ── EXECUTIVE SUMMARY ─────────────────────────────────────────────────────────
+\section*{Executive Summary}
+\addcontentsline{toc}{section}{Executive Summary}
+
+Cal Zero Waste, a unit within UC Berkeley's Facilities Services and Campus Operations
+department, manages 75 Big Belly smart bin stations - approximately 248 individual bins -
+deployed across the main Berkeley campus. Despite sensor infrastructure that reports each
+bin's fill level in real time, collection operations remain largely reactive: trucks are
+dispatched only after a bin triggers an alert, or after seven days have passed regardless
+of how full the bin is.
+
+Analysis of 59,111 collection events from January 2023 through February 2026 shows that
+35.1\% of all collections were unnecessary - bins were emptied well before they needed to
+be. On average, bins were only 47.1\% full at the time of collection, despite a 60\%
+trigger threshold. The division's collection efficiency metric has averaged approximately
+61\% over the past six months, reflecting this systematic over-collection.
+
+This project builds a forecasting tool that predicts when each bin will next need
+collection - up to one week in advance. Rather than waiting for a bin to trigger an alert,
+Cal Zero Waste would know in advance which bins are approaching their threshold and which
+can safely wait. The tool also classifies each bin by how frequently it needs service:
+roughly one quarter of bins need more than one collection per week, most bins need
+approximately one collection per week, and a small number rarely fill up under normal
+conditions.
+
+The forecasting approach performs well for weekly scheduling - it correctly identifies 95\%
+of bins that will need collection within the next seven days. It is less reliable for
+predicting which specific bins will need service the following day, a limitation addressed
+by a complementary short-term fill estimation model. Together, the two tools are designed
+to supplement the existing CLEAN dashboard workflow, not replace it.
+
+The uncertainty bounds accompanying each forecast have been empirically validated and
+calibrated to around 80\% coverage using a held-out calibration set. Further work in progress
+includes coordination with Project 10B on how these predictions feed into dispatch routing.
+
+\newpage
+
+% ── INTRODUCTION ──────────────────────────────────────────────────────────────
+\section{Introduction}
+
+\subsection{Organization Overview}
+
+Cal Zero Waste is the waste management program of UC Berkeley's Facilities Services and
+Campus Operations department, responsible for refuse, compost, and recycling collection
+across the main Berkeley campus. Cal Zero Waste employs a small operations team that
+coordinates daily collection routes and manages the Big Belly smart bin network. The
+project sponsor and primary point of contact is Samantha Bunke, Zero Waste Specialist.
+
+\subsection{The Big Belly System}
+
+Each Big Belly station is a solar-powered kiosk with a compacting capacity of approximately
+150 gallons. Fill level refers to the percentage of that compacted capacity that has been
+used - a bin at 60\% fill level contains the equivalent of 90 gallons of compacted waste.
+Sensors inside each bin continuously measure fill level and transmit that data to Big
+Belly's CLEAN Management Console, a cloud-based dashboard that shows the current status of
+every bin across the network.
+
+Each station contains three separate bins - one for landfill waste, one for compostables,
+and one for recyclables - for a total of approximately 248 individual bins across 90 campus
+locations. Each waste stream is collected separately, often on different schedules, by
+different trucks. A single station can therefore have a landfill bin that needs collection
+urgently while its adjacent compost bin is nearly empty.
+
+Collection is currently triggered by one of two conditions: a bin reaches 60\% of its
+compacted capacity, or seven days have passed since the last collection, whichever occurs
+first. Recyclables bins are an exception - their age-based trigger is disabled, and
+collection is triggered by fullness only. When a bin reaches threshold, the CLEAN dashboard
+displays a red alert. Drivers follow predefined routes that are adjusted on the fly in
+response to these alerts, visiting a bin as part of a route whether or not it currently
+needs service.
+
+\subsection{Motivation}
+
+The alert-based system produces two types of operational failure. Over-collection occurs
+when bins are serviced before they need to be: either because a driver is nearby and
+empties the bin opportunistically, or because a route includes the bin on a fixed schedule
+regardless of its fill level. Under-collection occurs when bins in high-traffic areas reach
+capacity between scheduled route visits, producing overflow incidents. Analysis of the full
+dataset confirms both problems at scale: 35.1\% of collections are wasted trips, and
+average bin fullness at the time of collection is only 47.1\%. This project develops
+forecasting models to give Cal Zero Waste advance visibility into bin fill levels, enabling
+a shift toward proactive scheduling.
+
+\newpage
+
+% ── PROBLEM STATEMENT ─────────────────────────────────────────────────────────
+\section{Problem Statement}
+
+\subsection{Problem Description}
+
+The core problem is that Cal Zero Waste has no way to predict future bin fill levels. The
+CLEAN dashboard shows what each bin's fill level is right now, but not what it will be
+tomorrow or next week. Without that forward-looking information, operators cannot
+distinguish between a bin that will reach threshold in two hours and one that will not
+reach it for five days. This forces either over-servicing - visiting bins before they need
+it - or under-servicing - waiting for alerts that may arrive too late.
+
+The problem is compounded by variation across the bin network. Fill rates vary by a factor
+of five to ten across campus locations. Landfill bins fill most quickly and are most
+sensitive to foot traffic and event surges. Compostable bins follow dining schedule
+patterns. Recyclables bins fill most slowly and operate under different service rules. A
+single station can simultaneously have a full landfill bin and a nearly empty compost bin,
+meaning any useful forecast must be generated at the individual bin level, not the station
+level.
+
+\subsection{What We Are Predicting}
+
+For each bin in the network and each waste stream it serves, the goal is to predict how
+full the bin will be at future points in time, and specifically, how many hours remain
+until it reaches the 60\% collection threshold. This time-to-threshold estimate - referred
+to as $T^*$ - is the primary operational output. It tells a scheduler: ``this bin will
+need service in approximately $X$ hours.'' The formal definition is:
+\[
+  T^*_{i,k} = \min\bigl\{t : \hat{F}_{i,k}(t) \geq 0.60\bigr\}
+\]
+where $\hat{F}_{i,k}(t)$ is the predicted fill level of bin $i$ of stream type $k$ at
+time $t$. Each prediction also carries an uncertainty range - an optimistic estimate (the
+bin could fill sooner) and a conservative estimate (the bin could fill later) - so that
+schedulers can make informed decisions under uncertainty.
+
+\subsection{Assumptions and Constraints}
+
+The primary dataset covers January 2023 through February 2026, containing 59,111
+collection events across 248 bins. Data from 2020 and 2021 is excluded due to
+pandemic-related disruption to campus occupancy and waste generation patterns, which
+produced fill dynamics unrepresentative of normal operations. Each bin is assumed to have
+a consistent 150-gallon compacting capacity, and the current bin network configuration is
+assumed stable over the forecasting horizon. Fill level is treated as resetting to
+approximately 0\% after each collection event. The 60\% fullness threshold and seven-day
+age rule are treated as fixed operational parameters.
+
+The main data constraint is that the CLEAN system can only export collection event logs -
+not a continuous record of fill level between collections. This means fill levels can only
+be observed at the moment a bin is emptied, and even then only in coarse steps of 0, 20,
+40, 60, 80, or 100\%. This limits how precisely the model can characterize fill dynamics
+and introduces noise that cannot be removed through modeling alone.
+
+\subsection{Success Criteria}
+
+Because missing a bin that needs collection carries greater operational risk than
+unnecessarily visiting one that does not, the forecasting model is designed to favor
+catching all bins that need service, even at the cost of some false alarms. The division's
+stated goal is to improve collection efficiency from the current 60-70\% range to
+approximately 90\%. Achieving this depends on both the accuracy of the forecast (this
+project) and how the forecast is used to plan collection routes (Project 10B).
+
+\subsection{External Factors}
+
+Several factors drive the variation in fill rates that makes forecasting valuable. The UC
+Berkeley academic calendar is the largest driver: campus population drops sharply during
+breaks and summer and rises sharply during move-in week and the start of each semester.
+High-impact events - Cal Day, the April 20 gathering at Memorial Glade, commencement, and
+home football games - produce localized waste spikes at nearby bins. Weather affects how
+many people are outside and therefore how quickly outdoor bins fill. Operational changes,
+such as the reusable container program introduced at MLK Student Union, can also shift
+fill-rate patterns for affected bins.
+
+\newpage
+
+% ── PROBLEM ANALYSIS AND SOLUTION ────────────────────────────────────────────
+\section{Problem Analysis and Solution}
+
+\subsection{Data Collection}
+
+The primary dataset was exported from the CLEAN Management Console by the project sponsor.
+Three daily collection activity logs cover January 2023 through February 2026, containing
+59,111 events across 248 bins at 90 campus locations. Each record includes bin serial
+number, location, waste stream type, reason for collection, fill level at collection (in
+20\% increments), and a timestamp.
+
+Supplementary data includes UC Berkeley academic calendars for 2023-24, 2024-25, and
+2025-26 from the Office of the Registrar; Cal Bears football home game schedules for
+2023-2025; and daily weather data for Berkeley from the Open-Meteo historical archive API.
+The team also interviewed Charles Montgomery, Park Maintenance Supervisor for the City of
+Walnut Creek, whose department manages 35 Big Belly stations at a higher collection
+threshold (75-80\%) with per-bin adjustments based on material weight.
+
+\subsection{Exploratory Data Analysis}
+
+Analysis of the full collection log confirms the scale of operational inefficiency driving
+this project. Of the 59,111 collection events, 35.1\% are classified as Not Ready -
+meaning the bin was collected well below the 60\% threshold. Average fill level at the
+time of collection is 47.1\%, meaningfully below the operational target.
+Table~\ref{tab:reasons} breaks down collection events by reason.
+
+\begin{table}[ht]
+\centering
+\caption{Collection event breakdown by reason, January 2023 through February 2026.}
+\label{tab:reasons}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Collection Reason}   & \textbf{Event Count} & \textbf{Share of Total} \\
+\midrule
+Fullness                     & 31,888               & 53.9\%                  \\
+Not Ready (wasted trip)      & 20,742               & 35.1\%                  \\
+Age (7-day rule)             & 6,481                & 11.0\%                  \\
+\midrule
+\textbf{Total}               & \textbf{59,111}      & \textbf{100.0\%}        \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection*{Wasted Trip Analysis}
+
+To better understand which wasted trips are actually preventable, the team categorized
+each of the 20,742 Not Ready collections into one of four groups:
+
+\begin{itemize}
+  \item \textbf{Pre-event staging} (4,761 trips, 23.0\% of wasted trips): Collections
+  that occurred within six days before a known high-impact campus event or semester start.
+  These may reflect intentional emptying before an anticipated surge. The six-day window
+  was selected empirically by testing windows of one to seven days and choosing the window
+  that produced the largest lift in Not Ready rate relative to the baseline. These trips
+  are only partially eliminable - Cal Zero Waste may deliberately empty bins before Cal
+  Day regardless of fill level, which is operationally sensible.
+
+  \item \textbf{Frequency mismatch} (3,736 trips, 18.0\% of wasted trips): Collections
+  at bins whose historical fill rate indicates they do not need more than one collection
+  per week, but that were visited more frequently. These trips are directly eliminable
+  through better scheduling.
+
+  \item \textbf{Unexplained} (12,245 trips, 59.0\% of wasted trips): Collections that
+  cannot be attributed to event staging or frequency mismatch. These represent the largest
+  category and are the most directly addressable by the forecasting model.
+
+  \item \textbf{Age-rule forced} (0 trips): No wasted trips were attributable solely to
+  the seven-day age rule, indicating that bins collected on the age rule were generally
+  full enough to justify service.
+\end{itemize}
+
+Table~\ref{tab:wasted} summarizes the breakdown. Approximately 77\% of wasted trips are
+potentially eliminable through better forecasting and scheduling, representing roughly
+27\% of all collections. The quarterly trend is also notable: the unexplained wasted trip
+rate has risen from approximately 8\% of all collections in 2023 Q3 to approximately 29\%
+in early 2026, suggesting that the gap between current scheduling practices and actual bin
+needs has widened over time.
+
+\begin{table}[ht]
+\centering
+\caption{Wasted trip breakdown by category, January 2023 through February 2026.}
+\label{tab:wasted}
+\begin{tabularx}{\textwidth}{L{3.2cm} r r r L{3.8cm}}
+\toprule
+\textbf{Category} & \textbf{Count} & \textbf{\% of Wasted} & \textbf{\% of All} &
+\textbf{Eliminable by Forecast} \\
+\midrule
+Pre-event staging   & 4,761  & 23.0\% & 8.1\%  & Partially (depends on intent) \\
+Frequency mismatch  & 3,736  & 18.0\% & 6.3\%  & Yes \\
+Unexplained         & 12,245 & 59.0\% & 20.7\% & Yes \\
+Age-rule forced     & 0      & 0.0\%  & 0.0\%  & No (requires policy change) \\
+\midrule
+\textbf{Total}      & \textbf{20,742} & \textbf{100\%} & \textbf{35.1\%} & \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Fill rates also vary substantially by stream type and location. Landfill bins fill most
+quickly and are most event-sensitive. Compostables bins follow dining patterns.
+Recyclables bins fill most slowly, with a higher proportion rarely reaching threshold
+under typical conditions. Day-of-week patterns are pronounced: needed collection counts
+drop sharply on weekends, consistent with lower campus occupancy.
+
+\subsection{Methodology}
+
+The modeling work proceeds in three phases. The first fits curves to each bin's historical
+fill data to characterize how that bin typically fills over time. The second trains
+statistical models to predict when a given bin will next need collection. The third
+combines both outputs into a rolling daily forecast that gives the operations team a
+forward-looking view of the entire bin network.
+
+\subsubsection*{Phase 1: Fill-Curve Modeling}
+
+Because the CLEAN system does not record fill levels between collection events, the team
+infers each bin's fill trajectory from the relationship between how long has passed since
+the last collection and how full the bin was when it was next collected. Five curve shapes
+were tested for each bin and the best-fitting shape was selected. The S-shaped curve
+(sigmoid) was selected for 82\% of bins. The plateau at high fill levels likely reflects a behavioral effect. As bins approach capacity, users dispose of waste elsewhere rather than forcing material in rather than compaction mechanics alone. The sensor reports fill level as a percentage of compacting capacity, so the plateau may also reflect a measurement artifact: compaction continues at high levels but the reported percentage changes more slowly as the compactor works against denser material. Both mechanisms produce the same observable sigmoid shape in the data and are not distinguishable from collection-event-level observations alone.
+For the 14 low-usage bins with too few observations to fit a reliable curve, the model
+uses the median fill rate for that bin's waste stream as a fallback. The average
+goodness-of-fit ($R^2 = 0.23$) reflects the coarse 20\% measurement increments in the
+data rather than a failure of the curves - individual collection events vary substantially
+around the average trajectory, and this variability cannot be reduced through modeling
+alone.
+
+\subsubsection*{Phase 2: Statistical Models}
+
+Four models were trained and evaluated. All models used 2023-2024 data for training and
+2025 onward for testing. This is a temporal split that prevents the model from being evaluated
+on data it was trained on. The quantity to predict for the regression models is the number of
+hours until the next collection event for a given bin. For the binary classification
+model, the two classes are: class 1 (the bin's fill level is currently at or above the
+60\% collection threshold and needs service); class 0 (the bin is below threshold and does
+not yet need service).
+
+The inputs used to make predictions include: how much time has passed since the bin was
+last collected; how full it was at that last collection; the day of the week and time of
+year; whether the campus is currently in session; whether a high-impact event is
+approaching; weather conditions; and each bin's historical fill characteristics derived
+from Phase 1.
+
+\begin{itemize}
+  \item The \textbf{baseline model} predicts that each bin will take the same amount of
+  time to need collection as it historically has on that day of the week. This is the
+  minimum standard all other models must exceed.
+
+  \item The \textbf{daily demand forecast} (Prophet) predicts how many total collections
+  each waste stream will need on a given day across the entire network. This is useful for
+  staffing and truck scheduling at the fleet level but does not indicate which specific
+  bins need service.
+
+  \item The \textbf{binary readiness classifier} (XGBoost) predicts whether a given bin has reached the collection threshold at the time of its most recent recorded event. It is tuned to catch as many bins that need collection as
+  possible, accepting some false positives to minimize missed bins.
+
+  \item The \textbf{quantile forecast} (LightGBM) predicts three estimates of when a bin
+  will need collection: an optimistic case, a median estimate, and a conservative case. These bounds give the operations team a range to work with rather than a single number.
+\end{itemize}
+
+\subsection{Results}
+
+\subsubsection*{How Accurately Can We Predict When a Bin Will Need Collection?}
+
+The quantile forecast model reduces prediction error by 16\% relative to the baseline
+(mean error of 40.3 hours versus 48.3 hours). To put this in context: the average bin
+needs collection roughly every two to three days, so an average error of 40 hours
+represents roughly half a collection cycle. The model is more accurate for once-a-week
+bins with stable fill patterns and less accurate for high-traffic bins with variable fill
+rates.
+
+\begin{table}[ht]
+\centering
+\caption{Prediction accuracy on the 2025 test set. The target is the number of hours
+until the bin next needs collection.}
+\label{tab:regression}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Model}    & \textbf{Mean Error (hours)} & \textbf{Typical Error (hours)} \\
+\midrule
+Baseline          & 48.3                        & 65.8                           \\
+Quantile Forecast & 40.3                        & 54.3                           \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% Weather features contributed minimally to prediction accuracy, reflecting Berkeley's mild
+% climate. The strongest predictive signals are the bin's own historical fill
+% characteristics, how much time has passed since it was last collected, and the day of the
+% week.
+
+\subsubsection*{Feature Importance and Per-Bin Error}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.85\textwidth]{feature_importance_q50.png}
+    \caption{Top 20 gain-based features for the LightGBM Q50 model.}
+    \label{fig:feature_importance_q50}
+\end{figure}
+
+Figure 1 shows the gain-based feature importance for the LightGBM Q50 model. The model relies most heavily on recency and recent fill-history variables. The three highest-gain predictors are the 28-day rolling average of elapsed time, the 7-day rolling average of elapsed time, and the current elapsed hours since the bin was last collected. Bin-specific historical fill characteristics also rank prominently, including median elapsed hours, rolling 7-day fullness, projected fill at 24, 48, and 72 hours, mean fullness at collection, and location. Weather variables appear among the top gain-based features, particularly wind and daily temperature, but the overall pattern remains consistent with the central result of this project: the most useful predictive information is a bin’s own recent service history and historical fill behavior.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.75\textwidth]{per_bin_error_histogram.png}
+    \caption{Distribution of per-bin prediction error (mean absolute error in hours) for the LightGBM Q50 model.}
+    \label{fig:per_bin_error_hist}
+\end{figure}
+
+
+Aggregate accuracy metrics also mask substantial heterogeneity across the fleet. Across the 206 bins with sufficient test observations for bin-level evaluation, the median per-bin mean absolute error is 34.9 hours, with an interquartile range of 28.4 to 43.3 hours and a full range of 15.5 to 92.3 hours. A total of 136 of 206 bins have per-bin mean absolute error at or below 40 hours, while only 12 exceed 60 hours. Figure 2 shows that most bins cluster in the 25-45 hour range, with a smaller right tail of bins that are materially harder to predict.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.85\textwidth]{hardest_bins_q50.png}
+    \caption{Fifteen hardest bins to predict under the LightGBM Q50 model.}
+    \label{fig:hardest_bins_q50}
+\end{figure}
+
+The hardest-to-predict bins are concentrated in the recyclables stream. The 15 worst bins include E05 V\&A Cafe/Etcheverry, 001 Berkeley Way (Offsite), E13 Stanley Hall, E14 Physics, and E12 Evans Hall Bus Stop; most are recyclables bins with long and irregular collection cycles. By stream, mean per-bin mean absolute error is 49.8 hours for Recyclables, compared with 34.0 hours for Compostables and 30.1 hours for Landfill. This reinforces the broader interpretation of Table 3: the model performs best on bins with regular service rhythms and is less precise on bins with sparse or more variable demand over time.
+
+\subsubsection*{How Well Can We Predict Total Daily Collection Demand?}
+
+The daily demand forecast predicts how many bins across the network will need service each
+day by waste stream. Table~\ref{tab:prophet} shows the average prediction error on the
+2025 test period.
+
+\begin{table}[ht]
+\centering
+\caption{Daily demand forecast accuracy by waste stream, 2025 test period. Values are
+collections per day.}
+\label{tab:prophet}
+\begin{tabular}{lrr}
+\toprule
+\textbf{Stream}  & \textbf{Mean Error} & \textbf{Typical Error} \\
+\midrule
+Landfill         & 7.7                 & 10.2                   \\
+Compostables     & 6.8                 & 8.6                    \\
+Recyclables      & 6.9                 & 9.1                    \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\subsubsection*{How Well Can We Identify Which Bins Need Collection?}
+
+The binary readiness classifier predicts whether a given bin is currently at or above the
+60\% collection threshold. At the default operating point, the model correctly identifies
+74\% of bins that need collection. By adjusting the operating point to be more aggressive,
+that figure improves to 85\% - at the cost of also flagging some bins that do not yet need
+service. Table~\ref{tab:xgboost} summarizes both operating points.
+
+\begin{table}[ht]
+\centering
+\caption{Binary readiness classifier performance, 2025 test set. Recall is the fraction
+of bins that actually need collection that the model correctly identifies.}
+\label{tab:xgboost}
+\begin{tabular}{L{4.5cm}cccc}
+\toprule
+\textbf{Operating Point} & \textbf{AUC} & \textbf{Precision} & \textbf{Recall} &
+\textbf{F1} \\
+\midrule
+Default (0.50)           & 0.857        & 0.77               & 0.74            & 0.75 \\
+Recall-optimized (0.33)  & 0.857        & 0.70               & 0.85            & 0.77 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Given the emphasis on minimizing missed collections, the recall-optimized operating point
+is recommended for operational use.
+
+\subsubsection*{How Far Ahead Can the Model Reliably Predict?}
+
+Table~\ref{tab:horizons} shows how well the quantile forecast identifies bins that will
+need collection within various time windows.
+
+\begin{table}[ht]
+\centering
+\caption{Forecast reliability by planning horizon, 2025 test set. Recall is the fraction
+of bins that will actually need collection within the horizon that the model correctly
+flags.}
+\label{tab:horizons}
+\begin{tabular}{L{2.5cm}ccc}
+\toprule
+\textbf{Horizon} & \textbf{AUC} & \textbf{Precision} & \textbf{Recall} \\
+\midrule
+24 hours         & 0.737        & 0.702              & 0.122           \\
+48 hours         & 0.771        & 0.815              & 0.371           \\
+72 hours         & 0.809        & 0.870              & 0.579           \\
+1 week           & 0.871        & 0.904              & 0.948           \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+At one week out, the model correctly identifies 95\% of bins that will need service
+within the next seven days. This is a reliable basis for weekly scheduling decisions. At 24
+hours, recall drops to 12\%, meaning the model misses approximately 88\% of bins needing
+collection the following day. This is a structural limitation of the data: because fill
+levels are only recorded when a bin is collected, the model has no way to observe what
+happens between service visits. The fill-curve model from Phase 1 is better suited for
+the 0-48 hour window because it uses the bin's characteristic fill trajectory to estimate
+its current state directly.
+
+The two approaches are complementary: the statistical model is most useful for planning
+the week ahead and classifying which bins need more or less frequent service; the
+fill-curve model is most useful for near-term urgency assessment.
+
+\subsection{Operational Forecast Output}
+
+The modeling outputs are combined into a rolling daily forecast that gives Cal Zero Waste
+a forward-looking view of every bin in the network. For each of the 248 bins, the forecast
+provides:
+
+\begin{itemize}
+  \item An estimated current fill level, based on how long has passed since the last
+  collection and that bin's typical fill trajectory
+  \item A projected date and time when the bin is expected to reach the 60\% threshold,
+  along with an earlier and later bound reflecting uncertainty
+  \item An urgency label combining the fill-curve estimate and the optimistic bound from
+  the quantile model
+  \item A service frequency classification indicating whether the bin typically needs
+  more than one collection per week, approximately one per week, or rarely needs service
+\end{itemize}
+
+Table~\ref{tab:urgency} defines the rules mapping model outputs to each urgency label.
+The conditions are evaluated in order from top to bottom; the first matching condition
+determines the label.
+
+\begin{table}[ht]
+\centering
+\caption{Urgency label definitions. Conditions are evaluated in priority order.
+``Days until full (curve)'' is the fill-curve point estimate; ``Days until full (optimistic)''
+is the P10 bound from the quantile model.}
+\label{tab:urgency}
+\begin{tabularx}{\textwidth}{L{2cm} X}
+\toprule
+\textbf{Label} & \textbf{Condition} \\
+\midrule
+OVERDUE  & Current fill level $\geq$ 60\% (bin is already at or past threshold) \\
+MONITOR  & No curve fit available, or fill curve asymptote is below 60\% (bin rarely
+           reaches threshold; check periodically) \\
+HIGH     & Days until full (optimistic) $\leq$ 1 (even the fast-fill scenario says
+           collect within 24 hours) \\
+ELEVATED & Days until full (curve) $\leq$ 3 (expected to reach threshold within 3 days) \\
+MODERATE & Days until full (curve) $\leq$ 5 (expected to reach threshold within 5 days) \\
+LOW      & Days until full (curve) $>$ 5 (no collection needed within the current week) \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+Table~\ref{tab:frequency} shows the service frequency breakdown across the network.
+
+\begin{table}[ht]
+\centering
+\caption{Service frequency classification across the 248-bin network, based on fill-curve
+estimates of time to reach the 60\% threshold from empty.}
+\label{tab:frequency}
+\begin{tabularx}{\textwidth}{L{2.8cm} r r X}
+\toprule
+\textbf{Class} & \textbf{Count} & \textbf{Share} & \textbf{Description} \\
+\midrule
+Multi-visit  & 63  & 25\% & Reaches 60\% in 3.5 days or less; needs more than one
+                            collection per week \\
+Once-a-week  & 147 & 59\% & Reaches 60\% in 3.5-7 days; one weekly collection is
+                            sufficient \\
+Unmatched    & 14  & 6\%  & In CLEAN log but absent from fill-curve dataset;
+                            classified as MONITOR until sufficient history is available \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+As of the most recent data timestamp (February 20, 2026), the forecast flags 80 bins as
+requiring collection immediately, and a total of 142 bins as needing collection at some
+point during the current week (inclusive of the 80 flagged immediately). Median time to
+threshold is 2.0 days for Landfill bins, 1.8 days for Compostables, and 2.0 days for
+Recyclables.
+
+The urgency label system is intentionally simpler than the underlying model outputs. This
+design reflects feedback from the project advisor that the tool must be usable by
+operations staff without a technical background. The six-level scale mirrors the existing
+red/green indicator in CLEAN and is intended to augment, not replace, the current driver
+workflow.
+
+\subsection{Urgency Band Distribution}
+
+Applying the calibrated operational forecast to the most recent data timestamp produces a concrete prioritization across the 248-bin fleet. Of the 248 bins, 53 are classified as OVERDUE, 18 as HIGH, 42 as ELEVATED, 14 as MODERATE, 25 as LOW, and 96 as MONITOR. The OVERDUE and HIGH categories identify bins that should be collected immediately or within the next 24 hours. ELEVATED and MODERATE identify bins that are likely to require service within the near-term planning horizon and therefore form the core of current route planning.
+
+The large MONITOR category does not indicate model failure. Instead, it reflects the structure of the fleet and the limits of the available data. Some bins lack a usable fitted curve, while others have fitted curves whose asymptotes remain below the 60\% collection threshold under normal conditions. For these bins, the forecast appropriately recommends periodic review rather than routine service. Operationally, the urgency-band system therefore separates the fleet into three groups: bins requiring immediate action, bins requiring near-term scheduling attention, and bins that can safely be monitored or deprioritized.
+
+\begin{table}[ht]
+\centering
+\caption{Urgency band distribution at the most recent data timestamp.}
+\label{tab:urgency_band_distribution}
+\begin{tabular}{l c p{8cm}}
+\hline
+\textbf{Urgency Label} & \textbf{Count} & \textbf{Operational Meaning} \\
+\hline
+OVERDUE  & 53 & Already at or above threshold; collect immediately \\
+HIGH     & 18 & Optimistic forecast reaches threshold within 24 hours \\
+ELEVATED & 42 & Expected to reach threshold within 3 days \\
+MODERATE & 14 & Expected to reach threshold within 5 days \\
+LOW      & 25 & No collection needed within the current week \\
+MONITOR  & 96 & No usable curve fit or asymptote below threshold; periodic review only \\
+\hline
+\textbf{Total} & \textbf{248} & Entire fleet \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsection{Limitations}
+
+The coarse 20\% fill-level measurement is the largest constraint on model accuracy. Fill
+levels are reported only in steps of 0, 20, 40, 60, 80, and 100\%, introducing noise that
+cannot be reduced through modeling. This is reflected in the average goodness-of-fit of
+0.23 for the fill-curve fits.
+
+The short-horizon limitation in Table~\ref{tab:horizons} is a direct consequence of the
+same data constraint - without fill-level readings between collection events, the model
+has no signal about intra-day fill dynamics or sudden surges. Weather features contributed
+negligibly to prediction accuracy, reflecting Berkeley's mild and consistent climate.
+Campus event features had modest effects on aggregate demand prediction but their impact
+at the individual bin level is difficult to isolate.
+
+The P10-P90 uncertainty bounds produced by the quantile model initially showed 59\%
+empirical coverage against an 80\% target, indicating the raw intervals were too narrow.
+This was corrected using split conformal calibration: a held-out calibration set (2024 H2)
+was used to compute a symmetric correction factor of 17 hours, which is applied to all
+intervals before operational use. After correction, empirical coverage on the 2025 test
+set is 80.8\%, meeting the target. Corrected intervals have a median width of 5.4 days.
+The bounds can be interpreted as approximate 80\% prediction intervals - for a given bin,
+the true next collection time falls within the stated range approximately 80\% of the
+time. Coverage is lower at short horizons (24-hour coverage remains limited for the same
+structural reasons that constrain short-horizon recall), so the bounds are most reliable
+for the 72-hour to one-week planning window.
+
+The 14 low-usage bins without fill-curve fits are flagged as MONITOR and should be
+incorporated into the fill-curve dataset as sufficient observation history accumulates.
+Operational changes - such as the reusable container program at MLK Student Union - may
+alter fill patterns for affected bins, which would require retraining on post-change data.
+
+\newpage
+
+% ── DRAFT NOTES ───────────────────────────────────────────────────────────────
+\section*{Draft Notes and Pending Work}
+\addcontentsline{toc}{section}{Draft Notes and Pending Work}
+
+This document is a draft of the first half of the final report. The following items are
+in progress and will be incorporated before final submission.
+
+\begin{itemize}
+
+  \item \textbf{Wasted trip figures.} Three-panel visualization (category breakdown,
+  by-stream breakdown, quarterly trend) and the top-15 bins by unexplained wasted trips
+  will be added as numbered figures in the EDA section.
+
+
+  \item \textbf{Recency correction.} A correction mechanism that adjusts fill-curve
+  projections based on recent deviations from the fitted curve is planned but not yet
+  implemented.
+
+  \item \textbf{Integration with Project 10B.} Handoff format, required fields, and
+  update cadence are pending coordination with Team 10B.
+
+  \item \textbf{Sustainable implementation recommendations.} A recommendations section
+  covering retraining cadence, CLEAN export process, staff interface design, and
+  procedures for handling operational changes will be included in the final report.
+
+  \item \textbf{Final model selection.} The final report will recommend a specific
+  approach for deployment based on completed evaluation.
+
+\end{itemize}
+
+\newpage
+
+% ── REFERENCES ────────────────────────────────────────────────────────────────
+\section*{References}
+\addcontentsline{toc}{section}{References}
+
+\begin{itemize}[label={}, leftmargin=0pt, itemindent=0pt, itemsep=6pt, parsep=0pt]
+
+  \item Hasan, M., et al. (2024). Prophet time series modeling of waste disposal rates in
+  four North American cities. \textit{Environmental Science and Pollution Research},
+  Springer.
+
+  \item Taylor, S.J., \& Letham, B. (2018). Forecasting at scale.
+  \textit{The American Statistician}, 72(1), 37-45.
+
+  \item Chen, T., \& Guestrin, C. (2016). XGBoost: A scalable tree boosting system.
+  \textit{Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge
+  Discovery and Data Mining}, 785-794.
+
+  \item Ke, G., et al. (2017). LightGBM: A highly efficient gradient boosting decision
+  tree. \textit{Advances in Neural Information Processing Systems}, 30.
+
+\end{itemize}
+
+\newpage
+
+% ── APPENDIX A: TECHNICAL DETAILS ─────────────────────────────────────────────
+\appendix
+\section{Technical Details}
+
+This appendix contains the mathematical details and model specifications referenced in the
+main body. It is intended for readers with a quantitative background.
+
+\subsection*{Fill-Curve Equations}
+
+For each bin, the best-fitting curve from the following set is selected based on $R^2$:
+
+\begin{itemize}
+  \item \textbf{Sigmoid:} $F(t) = \dfrac{L}{1 + e^{-k(t - t_0)}}$,
+  where $L$ is the asymptote, $k$ is the growth rate, and $t_0$ is the inflection point.
+  Time to threshold: $T^* = t_0 - \dfrac{\ln(L/60 - 1)}{k}$
+
+  \item \textbf{Saturating exponential:} $F(t) = a(1 - e^{-bt})$
+
+  \item \textbf{Power law:} $F(t) = a \cdot t^b$
+
+  \item \textbf{Logarithmic:} $F(t) = a \ln(t) + b$
+
+  \item \textbf{Linear:} $F(t) = a \cdot t$
+\end{itemize}
+
+In all cases, $t$ is hours elapsed since the last collection event and $F(t)$ is predicted
+fill level as a percentage of capacity. Coefficients are fitted per-bin using nonlinear
+least squares. Mean $R^2$ across all 224 fitted bins is 0.23, reflecting the 20\%
+measurement quantization rather than model inadequacy.
+
+\subsection*{Machine Learning Model Details}
+
+\textbf{Train/test split:} 2023-2024 for training, 2025 onward for testing.
+
+\textbf{Features:} Day of week, month, cyclical time encodings, hours elapsed since last
+collection, last observed fill level, 7-day and 28-day rolling averages of elapsed time
+and fill level, campus event flags (semester, spring recess, high-impact events, move-in
+week), weather (daily max/min temperature, precipitation, wind speed), location encoding,
+stream type, and fill-curve statistics from Phase 1 (median elapsed hours, predicted fill
+at 24h, 48h, 72h).
+
+\textbf{XGBoost binary classifier:} Class imbalance addressed with
+\texttt{scale\_pos\_weight} proportional to class ratio. Classification threshold selected
+at the lowest value yielding recall $\geq 0.85$ on the precision-recall curve (threshold
+= 0.33). Early stopping with 3-fold time-series cross-validation.
+
+\textbf{LightGBM quantile regression:} Separate models trained at $\alpha \in
+\{0.10, 0.50, 0.90\}$ using the pinball loss. 600 estimators, learning rate 0.05,
+63 leaves, feature and bagging fraction 0.8.
+
+\textbf{Prophet:} Weekly and yearly seasonality. Exogenous regressors:
+\texttt{is\_weekend}, \texttt{is\_semester}, \texttt{is\_high\_impact\_event},
+\texttt{is\_spring\_recess}. Fit separately per stream type on daily aggregate needed
+collection counts.
+
+\end{document}
