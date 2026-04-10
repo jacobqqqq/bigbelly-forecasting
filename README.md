@@ -105,7 +105,7 @@ bigbelly-forecasting/
 │   ├── README.md                         # Data dictionary; raw files excluded
 │   └── bin_fill_curve_coefficients.csv   # Per-bin curve coefficients (pre-computed)
 ├── report/
-│   └── main.tex                          # LaTeX source for first-half final report
+│   └── main.tex                          # LaTeX source for final report
 ├── .gitignore
 └── README.md
 ```
