@@ -2,7 +2,7 @@
 
 Forecasting system for UC Berkeley's Big Belly smart bin fleet. Predicts time-to-collection-threshold per bin, classifies collection frequency, and produces a rolling weekly operational forecast with calibrated uncertainty bounds.
 
-<img src="bigbelly.png" alt="Big Belly smart bin station on UC Berkeley campus" width="500"/>
+![Big Belly smart bin station on UC Berkeley campus](bigbelly.png)
 
 ---
 
