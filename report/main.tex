@@ -54,13 +54,11 @@
   \vspace{2.5cm}
   {\normalsize Joy Zhang \quad Jacob Quisumbing \quad Vicky Xiao \quad Zoey Kim\par}
   \vspace{0.4cm}
-  {\normalsize IND ENG 180 - Industrial Engineering Capstone, Project 10A\par}
+  {\normalsize IND ENG 180 - Project 10A\par}
   \vspace{0.4cm}
   {\normalsize University of California, Berkeley\par}
   \vspace{0.4cm}
-  {\normalsize March 20, 2026\par}
-  \vspace{0.6cm}
-  {\normalsize\color{gray}\textit{DRAFT - First Half of Final Report}\par}
+  {\normalsize April 10, 2026\par}
 \end{titlepage}
 
 \pagenumbering{arabic}
@@ -383,6 +381,25 @@ from Phase 1.
   will need collection: an optimistic case, a median estimate, and a conservative case. These bounds give the operations team a range to work with rather than a single number.
 \end{itemize}
 
+
+Training data for all statistical models is restricted to true fill cycles. Rows where
+the subsequent collection reason is Not Ready are excluded, so the models learn to predict
+the interval to the next needed collection rather than to the next scheduled visit,
+regardless of whether that visit was warranted.
+
+\subsection{Model Interpretation for Operations Use}
+The forecasting system is designed to be interpretable and usable by operations staff without a technical background. At a high level, the system answers two core questions: how full each bin is likely to be right now, and when it is expected to require collection. Rather than relying on a single model, the system combines multiple components that each serve a specific purpose in decision-making.
+
+The fill-curve model captures how each bin typically fills over time. Because the available data only records fill level at the moment of collection, the model learns the average relationship between time since last service and observed fullness. This allows the system to estimate a bin’s current fill level even when no recent sensor reading is available. In practice, this functions as a “baseline expectation” for how quickly a bin fills under normal conditions and is particularly useful for short-term urgency assessment.
+
+The machine learning forecast builds on this by predicting when a bin will next reach the 60\% threshold. It incorporates recent service history, day-of-week patterns, seasonal trends, and external factors such as campus events. Rather than assuming each bin behaves the same over time, the model adjusts predictions dynamically based on recent observations, making it more responsive to changes in usage patterns. This component is most valuable for planning several days to one week in advance.
+
+The binary readiness classifier simplifies the decision problem into a yes-or-no question: does this bin need collection now? It is intentionally tuned to prioritize recall, meaning it is designed to catch as many bins that require service as possible, even if that results in some unnecessary flags. This reflects the operational reality that missing a full bin is more costly than servicing one slightly early.
+
+Finally, the daily demand forecast operates at the system level by estimating how many bins will require collection across the network on a given day. While it does not identify specific bins, it provides important context for staffing and route planning by indicating expected workload levels.
+
+Together, these components are translated into a simplified urgency labeling system that maps technical predictions into actionable categories. This design ensures that the forecasting system supports decision-making without requiring operators to interpret model outputs directly.
+
 \subsection{Results}
 
 \subsubsection*{How Accurately Can We Predict When a Bin Will Need Collection?}
@@ -606,6 +623,21 @@ operations staff without a technical background. The six-level scale mirrors the
 red/green indicator in CLEAN and is intended to augment, not replace, the current driver
 workflow.
 
+\subsection{Short-Term Operational Recommendations}
+Several immediate operational changes can be implemented to capture value from the forecasting system without requiring major changes to existing infrastructure or workflows. These recommendations focus on reducing unnecessary collections, improving prioritization, and aligning daily operations with predicted demand.
+
+First, the operations team can implement a daily “do not collect” list using the LOW and MONITOR urgency categories. These bins are unlikely to require service within the current week and should be explicitly excluded from routes unless operationally convenient. Given that 35.1\% of historical collections occurred before bins reached threshold , even partial adherence to this rule could significantly reduce wasted trips.
+
+Second, route planning can be guided using the urgency labels as a lightweight prioritization system. Bins classified as OVERDUE and HIGH should be treated as mandatory stops, while ELEVATED bins should form the core of near-term route planning. MODERATE bins can be included opportunistically when drivers are already nearby. This approach allows for improved efficiency without requiring full route optimization or new software systems.
+
+Third, weekly planning can be introduced using the model’s strong performance over a seven-day horizon. Because the forecast correctly identifies approximately 95\% of bins that will require service within the next week , operators can generate a weekly service plan that distributes workload more evenly across days. This reduces reliance on reactive dispatching and helps prevent both overflow and over-servicing.
+
+Fourth, a simple short-horizon validation rule should be used to address known limitations of the model at the 24-hour level. For bins with unusually long elapsed time since last collection relative to their historical average, operators should cross-check the CLEAN dashboard before deferring service. This hybrid approach combines predictive insight with real-time data to mitigate uncertainty.
+
+Fifth, a small set of high-variability bins—particularly within the recyclables stream—should be monitored more closely. These bins exhibit higher prediction error and are more likely to deviate from expected patterns. Maintaining a manual watchlist for these locations provides a low-cost way to improve service reliability.
+
+Finally, the organization should pilot a modest increase in the collection threshold for selected bins. External benchmarking indicates that similar systems operate effectively at higher thresholds (e.g., 75–80\%), suggesting that the current 60\% threshold may be conservative. A controlled pilot on low-risk bins would allow the team to evaluate the trade-off between efficiency gains and overflow risk.
+
 \subsection{Urgency Band Distribution}
 
 Applying the calibrated operational forecast to the most recent data timestamp produces a concrete prioritization across the 248-bin fleet. Of the 248 bins, 53 are classified as OVERDUE, 18 as HIGH, 42 as ELEVATED, 14 as MODERATE, 25 as LOW, and 96 as MONITOR. The OVERDUE and HIGH categories identify bins that should be collected immediately or within the next 24 hours. ELEVATED and MODERATE identify bins that are likely to require service within the near-term planning horizon and therefore form the core of current route planning.
@@ -665,35 +697,144 @@ alter fill patterns for affected bins, which would require retraining on post-ch
 
 \newpage
 
-% ── DRAFT NOTES ───────────────────────────────────────────────────────────────
-\section*{Draft Notes and Pending Work}
-\addcontentsline{toc}{section}{Draft Notes and Pending Work}
+% ── SUMMARY AND CONCLUSIONS ───────────────────────────────────────────────────
+\section{Summary and Conclusions}
 
-This document is a draft of the first half of the final report. The following items are
-in progress and will be incorporated before final submission.
+This project developed a forecasting system to help Cal Zero Waste shift from reactive
+to proactive bin collection scheduling. Using 59,111 collection events from January 2023
+through February 2026, the team built and evaluated multiple models, combined their
+outputs into a rolling daily forecast, and validated the results against held-out 2025
+test data.
 
-\begin{itemize}
+The analysis confirmed that 35.1\% of all collections are wasted trips - bins emptied
+well before reaching the 60\% collection threshold - and that the average bin is only
+47.1\% full at the time of collection. The wasted trip decomposition shows that
+approximately 77\% of these trips are potentially eliminable through better forecasting
+and scheduling. The unexplained wasted trip rate has grown from approximately 8\% of all
+collections in 2023 Q3 to approximately 29\% in early 2026, indicating that the gap
+between current scheduling practices and actual bin needs has widened over time and
+warrants further investigation.
 
-  \item \textbf{Wasted trip figures.} Three-panel visualization (category breakdown,
-  by-stream breakdown, quarterly trend) and the top-15 bins by unexplained wasted trips
-  will be added as numbered figures in the EDA section.
+The forecasting system performs well at the weekly planning horizon. The quantile
+regression model reduces prediction error by 16\% relative to the naive baseline (mean
+error of 40.3 hours versus 48.3 hours) and correctly identifies 95\% of bins that will
+need collection within the next seven days. Short-horizon prediction remains limited by
+the coarse 20\% fill-level measurement: at 24 hours, the model correctly identifies only
+12\% of bins that will need service the following day. The fill-curve model addresses
+this gap by estimating each bin's current fill level from its historical trajectory and
+is used for near-term urgency classification in the 0 to 48 hour window.
 
+The binary readiness classifier correctly identifies 85\% of bins that currently need
+collection when tuned for high recall, with an overall discrimination score of 0.857.
+The daily demand forecast provides fleet-level workload estimates for staffing and truck
+scheduling, with mean errors of 6.8 to 7.7 collections per day across waste streams.
 
-  \item \textbf{Recency correction.} A correction mechanism that adjusts fill-curve
-  projections based on recent deviations from the fitted curve is planned but not yet
-  implemented.
+The uncertainty bounds accompanying each forecast have been calibrated to 80.8\%
+empirical coverage using a held-out calibration set, with a median interval width of
+5.4 days. The bounds are most reliable for the 72-hour to one-week planning window.
 
-  \item \textbf{Integration with Project 10B.} Handoff format, required fields, and
-  update cadence are pending coordination with Team 10B.
+The operational output combines these components into a six-level urgency system and a
+service frequency classification. Applied to the most recent data, the forecast flags
+53 bins as OVERDUE and 18 as HIGH - requiring immediate or same-day service - and
+classifies 25\% of the network as multi-visit bins requiring more than one collection
+per week.
 
-  \item \textbf{Sustainable implementation recommendations.} A recommendations section
-  covering retraining cadence, CLEAN export process, staff interface design, and
-  procedures for handling operational changes will be included in the final report.
+\subsection{Recommendations}
 
-  \item \textbf{Final model selection.} The final report will recommend a specific
-  approach for deployment based on completed evaluation.
+The following recommendations are organized by implementation timeline.
 
-\end{itemize}
+In the near term, Cal Zero Waste can reduce wasted trips without new infrastructure by
+using the LOW and MONITOR urgency labels to generate a daily exclusion list - bins that
+should not be visited unless operationally convenient. OVERDUE and HIGH bins should be
+treated as mandatory route stops; ELEVATED bins should form the core of near-term
+planning; MODERATE bins can be included opportunistically. A weekly service plan
+generated from the seven-day forecast would distribute workload more evenly and reduce
+reliance on reactive dispatching. For bins with unusually long elapsed time relative to
+their historical average, operators should cross-check the CLEAN dashboard before
+deferring service. A pilot program to modestly raise the collection threshold - for
+example, from 60\% to 70\% on selected low-risk bins - is also worth evaluating, as
+similar systems operate effectively at higher thresholds.
+
+Over a longer horizon, models should be retrained quarterly as new CLEAN export data
+accumulates. The growing unexplained wasted trip rate warrants investigation: it may
+reflect unrecorded operational changes, route adjustments, or a behavioral shift in how
+drivers use the CLEAN dashboard. As Project 10B matures, integrating the urgency labels
+and calibrated forecast bounds into a route optimization system is the most direct path
+to achieving the division's 90\% collection efficiency target. The 14 bins currently
+flagged as MONITOR should be incorporated into the fill-curve dataset as observation
+history grows.
+
+\newpage
+
+% ── SUSTAINABLE IMPLEMENTATION ────────────────────────────────────────────────
+\section{Sustainable Implementation}
+
+Keeping the forecasting system operational requires three ongoing activities: periodic
+model retraining, structured data export, and procedures for handling changes to the
+bin network.
+
+\subsection{Retraining Cadence}
+
+The quantile regression and binary classifier models should be retrained quarterly
+using accumulated CLEAN export data. Fill-curve coefficients are more stable and can
+be updated semi-annually, or immediately when a bin's usage pattern changes materially.
+Retraining requires exporting the updated collection log, running the data processing
+and modeling notebooks in sequence, and replacing the output files used by the
+operational forecast. The full pipeline can be completed in approximately two to three
+hours on a standard laptop.
+
+\subsection{CLEAN Export Process}
+
+The primary data source is the CLEAN Management Console export, currently pulled by
+the project sponsor on an as-needed basis. For the forecast to remain accurate, exports
+should occur on a fixed schedule - weekly or bi-weekly - and be appended to the master
+collection log before running the forecast update. The export format and column mapping
+are documented in the data processing notebook.
+
+\subsection{Staff Interface}
+
+The operational forecast output is designed for use by operations staff without a
+technical background. The urgency labels and frequency classifications can be consumed
+directly from the forecast output file, or incorporated into the existing CLEAN
+dashboard workflow as a supplementary priority list. No model interpretation is required
+at the point of use.
+
+\subsection{Handling Operational Changes}
+
+Significant changes - such as the reusable container program introduced at MLK Student
+Union, bin relocations, or changes to the collection threshold - can shift fill patterns
+for affected bins. When such changes occur, the affected bins should be flagged and their
+fill-curve coefficients reset once at least two months of post-change collection data
+are available. The quantile regression and binary classifier models will self-correct
+through quarterly retraining, but predictions for affected bins should be treated with
+additional uncertainty in the interim.
+
+\newpage
+
+% ── INTEGRATION WITH PROJECT 10B ──────────────────────────────────────────────
+\section{Integration with Project 10B}
+
+Project 10B is a companion effort focused on route dispatch optimization. It will
+consume the forecasting outputs from this project to generate optimized daily collection
+routes. Coordination with Team 10B is ongoing; the interface specification below
+reflects the current state of planning and will be updated once that coordination is
+complete.
+
+The primary handoff artifact is the operational forecast output file, updated on a
+rolling daily basis. The fields most relevant to dispatch optimization are the urgency
+label, the calibrated optimistic, median, and conservative time-to-collection estimates,
+the estimated current fill level, the service frequency classification, and the bin
+location and waste stream identifiers needed for route assignment.
+
+For planning purposes, Team 10B can treat the urgency labels as a soft constraint on
+route construction: OVERDUE and HIGH bins are mandatory daily stops; ELEVATED and
+MODERATE bins are candidates for inclusion based on route capacity; LOW and MONITOR bins
+are optional stops. The calibrated time-to-collection estimates provide additional
+flexibility - a bin with a conservative estimate of 36 hours can be safely deferred to
+the following day, while a bin with an optimistic estimate of 12 hours likely cannot.
+
+The update cadence, file format, and exact field mapping will be documented in a formal
+interface specification once Team 10B's routing model requirements are confirmed.
 
 \newpage
 
