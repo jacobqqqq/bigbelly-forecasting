@@ -2,6 +2,8 @@
 
 Forecasting system for UC Berkeley's Big Belly smart bin fleet. Predicts time-to-collection-threshold per bin, classifies collection frequency, and produces a rolling weekly operational forecast with calibrated uncertainty bounds.
 
+![Big Belly smart bin station on UC Berkeley campus](assets/bigbelly.png)
+
 ---
 
 ## Problem
@@ -94,11 +96,11 @@ The 35.1% wasted trip rate (20,742 events) is decomposed into four categories:
 ```
 bigbelly-forecasting/
 ├── notebooks/
-│   ├── 01_fillcurve_forecast.ipynb       # Phase 1: fill-curve fitting, T*, frequency classification
-│   ├── 02_modeling.ipynb                 # Phase 2: LightGBM quantile, XGBoost, Prophet, baselines
-│   ├── 03_calibration.ipynb              # Split conformal calibration, coverage validation
-│   ├── 04_operational_forecast.ipynb     # Rolling daily forecast, urgency bands, output table
-│   └── 05_wasted_trip_analysis.ipynb     # Wasted trip decomposition and quarterly trend
+│   ├── 01_eda.ipynb                      # Exploratory data analysis, wasted trip decomposition
+│   ├── 02_fillcurve_forecast.ipynb       # Per-bin nonlinear curve fitting, T*, frequency classification
+│   ├── 03_modeling.ipynb                 # All ML models: naive baseline, Prophet, XGBoost, LightGBM quantile; per-bin error analysis; enriched quantile output
+│   ├── 04_calibration.ipynb              # Split conformal calibration; computes q_hat = 16.98 hours
+│   └── 05_operational_forecast.ipynb     # Rolling daily forecast, urgency bands, calibrated output table
 ├── data/
 │   ├── README.md                         # Data dictionary; raw files excluded
 │   └── bin_fill_curve_coefficients.csv   # Per-bin curve coefficients (pre-computed)
@@ -127,11 +129,11 @@ Daily Collection Activity - CLEAN 2026 (1).csv
 Each file has a 10-row metadata header — the notebooks handle this automatically via `skiprows=10`.
 
 **Execution order:**
-1. `01_fillcurve_forecast.ipynb` — generates `bin_fill_curve_coefficients.csv` and `bin_quantile_forecasts.csv`
-2. `02_modeling.ipynb` — trains all models, exports per-bin quantile outputs
-3. `03_calibration.ipynb` — computes `q_hat` correction factor; run after `02`
-4. `04_operational_forecast.ipynb` — loads all outputs, produces the rolling urgency table
-5. `05_wasted_trip_analysis.ipynb` — standalone EDA; no dependencies on other notebooks
+1. `01_eda.ipynb` — standalone EDA; no dependencies on other notebooks
+2. `02_fillcurve_forecast.ipynb` — generates `bin_fill_curve_coefficients.csv`
+3. `03_modeling.ipynb` — trains all models; generates `bin_quantile_forecasts_enriched.csv` and `per_bin_error_q50.csv`
+4. `04_calibration.ipynb` — computes q_hat correction factor; run after `03`
+5. `05_operational_forecast.ipynb` — loads all outputs; applies q_hat; produces `operational_forecast_full.csv`
 
 Weather data is fetched automatically from the Open-Meteo API on first run and cached locally.
 
@@ -145,3 +147,16 @@ Weather data is fetched automatically from the Open-Meteo API on first run and c
 - Weekly planning recall: **94.8%** — reliable basis for 7-day scheduling
 - P10/P90 uncertainty bounds calibrated to **80.8% empirical coverage** via split conformal calibration
 - Frequency classification: 25% of bins need multiple collections/week; 59% need ~1/week
+
+## Urgency Band Definitions
+
+| Label | Condition |
+|---|---|
+| OVERDUE | Current fill ≥ 60% — collect immediately |
+| MONITOR | No curve fit, or curve asymptote < 60% — bin rarely reaches threshold |
+| HIGH | Calibrated P10 ≤ 1 day — collect within 24 hours |
+| ELEVATED | Curve estimate ≤ 3 days |
+| MODERATE | Curve estimate ≤ 5 days |
+| LOW | Curve estimate > 5 days — no collection needed this week |
+
+Conditions evaluated in priority order top to bottom.
