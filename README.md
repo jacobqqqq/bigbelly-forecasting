@@ -2,7 +2,7 @@
 
 Forecasting system for UC Berkeley's Big Belly smart bin fleet. Predicts time-to-collection-threshold per bin, classifies collection frequency, and produces a rolling weekly operational forecast with calibrated uncertainty bounds.
 
-![Big Belly smart bin station on UC Berkeley campus](assets/bigbelly.png)
+![Big Belly smart bin station from UC Berkeley campus](bigbelly.png)
 
 ---
 
@@ -160,3 +160,7 @@ Weather data is fetched automatically from the Open-Meteo API on first run and c
 | LOW | Curve estimate > 5 days — no collection needed this week |
 
 Conditions evaluated in priority order top to bottom.
+
+## Acknowledgments
+
+This project was completed as part of IND ENG 180 (Industrial Engineering Capstone) at UC Berkeley. We thank Samantha Bunke (Zero Waste Specialist, Cal Zero Waste) for providing data access and operational guidance, and Professor Candace Yano for advising the project.
